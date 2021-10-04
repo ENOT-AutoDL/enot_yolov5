@@ -1,0 +1,187 @@
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+                                aten::cudnn_convolution         5.54%       8.923ms         8.51%      13.707ms      97.213us     101.982ms        64.03%     101.982ms     723.277us           141
+turing_fp16_s1688cudnn_fp16_256x128_ldg8_relu_f2f_ex...         0.00%       0.000us         0.00%       0.000us       0.000us      48.476ms        30.44%      48.476ms       1.102ms            44
+                                             aten::add_         1.44%       2.313ms         2.21%       3.562ms      25.262us      21.010ms        13.19%      21.010ms     149.007us           141
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us      21.010ms        13.19%      21.010ms     149.007us           141
+turing_fp16_s1688cudnn_fp16_256x128_ldg8_relu_filter...         0.00%       0.000us         0.00%       0.000us       0.000us      20.997ms        13.18%      20.997ms     262.462us            80
+                                       aten::threshold_         0.73%       1.177ms         1.50%       2.418ms      17.650us      18.956ms        11.90%      18.956ms     138.365us           137
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us      18.956ms        11.90%      18.956ms     138.365us           137
+void nchwToNhwcKernel<__half, __half, float, true, f...         0.00%       0.000us         0.00%       0.000us       0.000us      12.640ms         7.94%      12.640ms     110.877us           114
+                                             aten::_cat         0.29%     464.000us         0.65%       1.043ms      52.150us       7.654ms         4.81%       7.654ms     382.700us            20
+void nhwcToNchwKernel<__half, __half, float, true, f...         0.00%       0.000us         0.00%       0.000us       0.000us       7.198ms         4.52%       7.198ms     135.811us            53
+void at::native::(anonymous namespace)::CatArrayBatc...         0.00%       0.000us         0.00%       0.000us       0.000us       6.304ms         3.96%       6.304ms     350.222us            18
+                                              aten::add         0.30%     488.000us         0.47%     765.000us      27.321us       5.881ms         3.69%       5.881ms     210.036us            28
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       5.823ms         3.66%       5.823ms     242.625us            24
+turing_fp16_s1688cudnn_fp16_256x64_ldg8_relu_f2f_exp...         0.00%       0.000us         0.00%       0.000us       0.000us       4.220ms         2.65%       4.220ms       1.407ms             3
+         volta_fp16_scudnn_fp16_128x64_relu_small_nn_v1         0.00%       0.000us         0.00%       0.000us       0.000us       3.233ms         2.03%       3.233ms       3.233ms             1
+turing_fp16_s1688cudnn_fp16_128x128_ldg8_relu_f2f_ex...         0.00%       0.000us         0.00%       0.000us       0.000us       1.922ms         1.21%       1.922ms     320.333us             6
+                                            aten::copy_         0.12%     187.000us         0.19%     311.000us      25.917us       1.711ms         1.07%       1.711ms     142.583us            12
+      volta_fp16_scudnn_fp16_128x64_relu_interior_nn_v1         0.00%       0.000us         0.00%       0.000us       0.000us       1.532ms         0.96%       1.532ms     510.667us             3
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       1.425ms         0.89%       1.425ms     178.125us             8
+turing_fp16_s1688cudnn_fp16_128x128_ldg8_relu_f2f_ex...         0.00%       0.000us         0.00%       0.000us       0.000us       1.040ms         0.65%       1.040ms     260.000us             4
+                               aten::upsample_nearest2d         0.07%     120.000us         0.10%     169.000us      56.333us     964.000us         0.61%     964.000us     321.333us             3
+void at::native::(anonymous namespace)::upsample_nea...         0.00%       0.000us         0.00%       0.000us       0.000us     964.000us         0.61%     964.000us     321.333us             3
+void at::native::(anonymous namespace)::CatArrayBatc...         0.00%       0.000us         0.00%       0.000us       0.000us     765.000us         0.48%     765.000us     765.000us             1
+void at::native::(anonymous namespace)::CatArrayBatc...         0.00%       0.000us         0.00%       0.000us       0.000us     585.000us         0.37%     585.000us     585.000us             1
+void nhwcToNchwKernel<__half, __half, float, true, t...         0.00%       0.000us         0.00%       0.000us       0.000us     530.000us         0.33%     530.000us     132.500us             4
+                                          aten::sigmoid         0.04%      66.000us         0.08%     132.000us      33.000us     519.000us         0.33%     519.000us     129.750us             4
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     519.000us         0.33%     519.000us     129.750us             4
+                                              aten::mul         0.19%     302.000us         0.36%     573.000us      35.812us     311.000us         0.20%     311.000us      19.438us            16
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us     286.000us         0.18%     286.000us      71.500us             4
+                          aten::max_pool2d_with_indices         0.05%      83.000us         0.11%     170.000us      56.667us     258.000us         0.16%     258.000us      86.000us             3
+void at::native::(anonymous namespace)::max_pool_for...         0.00%       0.000us         0.00%       0.000us       0.000us     258.000us         0.16%     258.000us      86.000us             3
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us     255.000us         0.16%     255.000us      31.875us             8
+cask_cudnn::computeOffsetsKernel(cask_cudnn::Compute...         0.00%       0.000us         0.00%       0.000us       0.000us     129.000us         0.08%     129.000us       1.613us            80
+cudnn::gemm::computeOffsetsKernel(cudnn::gemm::Compu...         0.00%       0.000us         0.00%       0.000us       0.000us      65.000us         0.04%      65.000us       1.066us            61
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us      58.000us         0.04%      58.000us      14.500us             4
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us      34.000us         0.02%      34.000us       8.500us             4
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us      22.000us         0.01%      22.000us       5.500us             4
+                                              aten::pow         0.07%     112.000us         0.16%     252.000us      63.000us      10.000us         0.01%      10.000us       2.500us             4
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us      10.000us         0.01%      10.000us       2.500us             4
+                                              aten::sub         0.04%      71.000us         0.08%     133.000us      33.250us       9.000us         0.01%       9.000us       2.250us             4
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       9.000us         0.01%       9.000us       2.250us             4
+                                            aten::zeros         0.04%      64.000us         0.05%      78.000us      78.000us       0.000us         0.00%       0.000us       0.000us             1
+                                            aten::empty         0.67%       1.073ms         0.67%       1.073ms       5.447us       0.000us         0.00%       0.000us       0.000us           197
+                                            aten::zero_         0.00%       3.000us         0.00%       3.000us       3.000us       0.000us         0.00%       0.000us       0.000us             1
+                                        model_inference         5.63%       9.065ms        99.95%     160.993ms     160.993ms       0.000us         0.00%     159.265ms     159.265ms             1
+                                            aten::slice         0.11%     182.000us         0.14%     219.000us       9.125us       0.000us         0.00%       0.000us       0.000us            24
+                                       aten::as_strided         0.03%      54.000us         0.03%      54.000us       1.500us       0.000us         0.00%       0.000us       0.000us            36
+                                              aten::cat         0.16%     257.000us         0.81%       1.300ms      65.000us       0.000us         0.00%       7.654ms     382.700us            20
+                                          aten::resize_         0.26%     415.000us         0.26%     415.000us       1.334us       0.000us         0.00%       0.000us       0.000us           311
+                                       cudaLaunchKernel         4.47%       7.203ms         4.47%       7.203ms       8.731us       0.000us         0.00%       0.000us       0.000us           825
+                                           aten::conv2d         0.65%       1.046ms        14.45%      23.282ms     165.121us       0.000us         0.00%     122.992ms     872.284us           141
+                                      aten::convolution         0.65%       1.040ms        13.81%      22.236ms     157.702us       0.000us         0.00%     122.992ms     872.284us           141
+                                     aten::_convolution         1.40%       2.262ms        13.16%      21.196ms     150.326us       0.000us         0.00%     122.992ms     872.284us           141
+                                        cudaEventRecord         0.11%     181.000us         0.11%     181.000us       1.284us       0.000us         0.00%       0.000us       0.000us           141
+                                          aten::reshape         0.38%     619.000us         1.03%       1.665ms      11.809us       0.000us         0.00%       0.000us       0.000us           141
+                                             aten::view         0.68%       1.093ms         0.68%       1.093ms       7.336us       0.000us         0.00%       0.000us       0.000us           149
+                                            aten::relu_         0.82%       1.327ms         2.33%       3.745ms      27.336us       0.000us         0.00%      18.956ms     138.365us           137
+                                       aten::max_pool2d         0.01%      22.000us         0.12%     192.000us      64.000us       0.000us         0.00%     258.000us      86.000us             3
+                                          aten::permute         0.02%      39.000us         0.03%      45.000us      11.250us       0.000us         0.00%       0.000us       0.000us             4
+                                       aten::contiguous         0.02%      31.000us         0.12%     187.000us      46.750us       0.000us         0.00%       1.176ms     294.000us             4
+                                       aten::empty_like         0.02%      40.000us         0.06%     104.000us      13.000us       0.000us         0.00%       0.000us       0.000us             8
+                                           aten::select         0.04%      69.000us         0.05%      80.000us      10.000us       0.000us         0.00%       0.000us       0.000us             8
+                                      aten::result_type         0.02%      31.000us         0.02%      31.000us       3.875us       0.000us         0.00%       0.000us       0.000us             8
+                                    aten::empty_strided         0.02%      37.000us         0.02%      37.000us       9.250us       0.000us         0.00%       0.000us       0.000us             4
+                                         aten::can_cast         0.00%       1.000us         0.00%       1.000us       0.250us       0.000us         0.00%       0.000us       0.000us             4
+                                               aten::to         0.00%       4.000us         0.00%       4.000us       1.000us       0.000us         0.00%       0.000us       0.000us             4
+                                  cudaDeviceSynchronize        74.88%     120.607ms        74.88%     120.607ms     120.607ms       0.000us         0.00%       0.000us       0.000us             1
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+Self CPU time total: 161.071ms
+Self CUDA time total: 159.265ms
+
+ks=3
+  time (%)  time (ms)     GFLOPs     params  module
+      4.59       7.34       5.71       7040  models.common.Focus
+      4.19       6.70      15.13      73984  models.common.Conv
+     13.57      21.70      32.01     156928  models.common.C3
+      3.02       4.83      15.11     295424  models.common.Conv
+     18.33      29.31      82.35    1611264  models.common.C3
+      2.48       3.97      15.11    1180672  models.common.Conv
+     12.53      20.04      82.28    6433792  models.common.C3
+      1.42       2.28      11.33    3540480  models.common.Conv
+      2.87       4.59      17.94    5611008  models.common.C3
+      0.81       1.29       5.66    7079936  models.common.Conv
+      0.49       0.78       2.10    2624512  models.common.SPP
+      1.19       1.91       7.97    9971712  models.common.C3
+      0.13       0.20       0.63     787968  models.common.Conv
+      0.08       0.12       0.00          0  torch.nn.modules.upsampling.Upsample
+      0.12       0.20       0.00          0  models.common.Concat
+      2.94       4.70      19.83    6200832  models.common.C3
+      0.19       0.30       1.26     394240  models.common.Conv
+      0.18       0.28       0.00          0  torch.nn.modules.upsampling.Upsample
+      0.38       0.60       0.00          0  models.common.Concat
+      5.13       8.21      35.26    2757632  models.common.C3
+      0.32       0.51       1.68     131584  models.common.Conv
+      0.35       0.56       0.00          0  torch.nn.modules.upsampling.Upsample
+      0.85       1.35       0.00          0  models.common.Concat
+      7.42      11.87      35.30     690688  models.common.C3
+      1.42       2.26       7.55     590336  models.common.Conv
+      0.17       0.27       0.00          0  models.common.Concat
+      4.88       7.80      31.91    2495488  models.common.C3
+      0.95       1.52       7.55    2360320  models.common.Conv
+      0.08       0.13       0.00          0  models.common.Concat
+      2.82       4.50      18.57    5807616  models.common.C3
+      0.78       1.25       4.25    5309952  models.common.Conv
+      0.03       0.05       0.00          0  models.common.Concat
+      1.24       1.98       8.39   10496000  models.common.C3
+      4.09       6.54       5.87     653820  models.yolo.Detect
+159.9 ms total
+
+partially ks=5
+  time (%)  time (ms)     GFLOPs     params  module
+      6.86      12.70      15.78      19328  models.common.Focus
+      5.30       9.81      41.97     205056  models.common.Conv
+     11.66      21.61      32.01     156928  models.common.C3
+      4.34       8.03      41.96     819712  models.common.Conv
+     15.85      29.36      82.35    1611264  models.common.C3
+      4.26       7.90      41.95    3277824  models.common.Conv
+     10.82      20.05      82.28    6433792  models.common.C3
+      2.75       5.09      31.46    9831936  models.common.Conv
+      2.48       4.59      17.94    5611008  models.common.C3
+      1.62       3.00      15.73   19662848  models.common.Conv
+      0.43       0.79       2.10    2624512  models.common.SPP
+      1.03       1.91       7.97    9971712  models.common.C3
+      0.11       0.20       0.63     787968  models.common.Conv
+      0.07       0.12       0.00          0  torch.nn.modules.upsampling.Upsample
+      0.11       0.20       0.00          0  models.common.Concat
+      2.53       4.69      19.83    6200832  models.common.C3
+      0.16       0.30       1.26     394240  models.common.Conv
+      0.15       0.28       0.00          0  torch.nn.modules.upsampling.Upsample
+      0.32       0.60       0.00          0  models.common.Concat
+      4.43       8.21      35.26    2757632  models.common.C3
+      0.28       0.51       1.68     131584  models.common.Conv
+      0.31       0.57       0.00          0  torch.nn.modules.upsampling.Upsample
+      0.73       1.35       0.00          0  models.common.Concat
+      6.40      11.86      35.30     690688  models.common.C3
+      2.22       4.11      20.97    1638912  models.common.Conv
+      0.15       0.27       0.00          0  models.common.Concat
+      4.21       7.80      31.91    2495488  models.common.C3
+      1.75       3.24      20.97    6554624  models.common.Conv
+      0.07       0.13       0.00          0  models.common.Concat
+      2.43       4.50      18.57    5807616  models.common.C3
+      1.56       2.89      11.80   14747136  models.common.Conv
+      0.03       0.05       0.00          0  models.common.Concat
+      1.08       2.00       8.39   10496000  models.common.C3
+      3.53       6.53       5.87     653820  models.yolo.Detect
+185.3 ms total
+
+ks=5
+  time (%)  time (ms)     GFLOPs     params  module
+      5.06      12.68      15.78      19328  models.common.Focus
+      3.91       9.81      41.97     205056  models.common.Conv
+     10.73      26.89      72.27     353536  models.common.C3
+      3.20       8.03      41.96     819712  models.common.Conv
+     17.72      44.41     203.15    3970560  models.common.C3
+      3.14       7.87      41.95    3277824  models.common.Conv
+     14.04      35.19     203.08   15870976  models.common.C3
+      2.04       5.11      31.46    9831936  models.common.Conv
+      3.31       8.29      40.59   12688896  models.common.C3
+      1.18       2.96      15.73   19662848  models.common.Conv
+      0.31       0.78       2.10    2624512  models.common.SPP
+      1.46       3.66      18.04   22554624  models.common.C3
+      0.08       0.20       0.63     787968  models.common.Conv
+      0.05       0.12       0.00          0  torch.nn.modules.upsampling.Upsample
+      0.08       0.20       0.00          0  models.common.Concat
+      3.35       8.40      42.48   13278720  models.common.C3
+      0.12       0.30       1.26     394240  models.common.Conv
+      0.11       0.28       0.00          0  torch.nn.modules.upsampling.Upsample
+      0.24       0.60       0.00          0  models.common.Concat
+      5.30      13.28      75.53    5903360  models.common.C3
+      0.20       0.51       1.68     131584  models.common.Conv
+      0.22       0.56       0.00          0  torch.nn.modules.upsampling.Upsample
+      0.54       1.35       0.00          0  models.common.Concat
+      6.76      16.94      75.56    1477120  models.common.C3
+      1.63       4.09      20.97    1638912  models.common.Conv
+      0.11       0.27       0.00          0  models.common.Concat
+      5.15      12.91      72.17    5641216  models.common.C3
+      1.31       3.28      20.97    6554624  models.common.Conv
+      0.05       0.13       0.00          0  models.common.Concat
+      3.30       8.26      41.22   12885504  models.common.C3
+      1.17       2.93      11.80   14747136  models.common.Conv
+      0.02       0.05       0.00          0  models.common.Concat
+      1.50       3.75      18.46   23078912  models.common.C3
+      2.61       6.54       5.87     653820  models.yolo.Detect
+250.7 ms total
