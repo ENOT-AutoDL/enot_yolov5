@@ -1,43 +1,11 @@
 <div align="center">
 <p>
 <a align="left" href="https://ultralytics.com/yolov5" target="_blank">
-<img width="850" src="https://github.com/ultralytics/yolov5/releases/download/v1.0/splash.jpg"></a>
+<img width="850" src="splash.jpg"></a>
 </p>
 <br>
 <div>
-<a href="https://github.com/ultralytics/yolov5/actions"><img src="https://github.com/ultralytics/yolov5/workflows/CI%20CPU%20testing/badge.svg" alt="CI CPU testing"></a>
 <a href="https://zenodo.org/badge/latestdoi/264818686"><img src="https://zenodo.org/badge/264818686.svg" alt="YOLOv5 Citation"></a>
-<br>  
-<a href="https://colab.research.google.com/github/ultralytics/yolov5/blob/master/tutorial.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"></a>
-<a href="https://www.kaggle.com/ultralytics/yolov5"><img src="https://kaggle.com/static/images/open-in-kaggle.svg" alt="Open In Kaggle"></a>
-<a href="https://hub.docker.com/r/ultralytics/yolov5"><img src="https://img.shields.io/docker/pulls/ultralytics/yolov5?logo=docker" alt="Docker Pulls"></a>
-</div>
-  <br>
-  <div align="center">
-    <a href="https://github.com/ultralytics">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-github.png" width="2%"/>
-    </a>
-    <img width="2%" />
-    <a href="https://www.linkedin.com/company/ultralytics">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-linkedin.png" width="2%"/>
-    </a>
-    <img width="2%" />
-    <a href="https://twitter.com/ultralytics">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-twitter.png" width="2%"/>
-    </a>
-    <img width="2%" />
-    <a href="https://youtube.com/ultralytics">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-youtube.png" width="2%"/>
-    </a>
-    <img width="2%" />
-    <a href="https://www.facebook.com/ultralytics">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-facebook.png" width="2%"/>
-    </a>
-    <img width="2%" />
-    <a href="https://www.instagram.com/ultralytics/">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-instagram.png" width="2%"/>
-    </a>
-</div>
 
 <br>
 <p>
@@ -52,38 +20,143 @@ YOLOv5 🚀 is a family of object detection architectures and models pretrained 
 
 </div>
 
+</div>
+
 ## <div align="center">Documentation</div>
 
 See the [YOLOv5 Docs](https://docs.ultralytics.com) for full documentation on training, testing and deployment.
 
-See the [ENOT Docs](link here) for full ENOT framework documentation.
+See the [ENOT Docs](https://readthedocs.expasoft.com/) for full ENOT framework documentation.
+
+## <div align="center">Getting started with the combination of ENOT and YOLOv5</div>
+
+This project was made to simplify Neural Architecture Search of YOLOv5-like models. We currently support optimization of
+two YOLOv5-like search spaces: `yolov5s` and `yolov5l`. If you want to use other `yolov5*` config - please contact the
+[ENOT team](https://enot.ai/#rec321431603).
+
+We conducted several experiments with `yolov5s`-like and `yolov5l`-like models on `MS COCO` dataset. Upon request, we
+can share our pre-trained search space checkpoints. Note that we conducted all of our experiments with
+<font color="red">**ReLU**</font> activation instead of `SiLU` activation. If you want to  proceed with `SiLU`
+activation or another one - just replace it in `models/common.py` in `Conv` class.
+
+Our `yolov5s`-like search space contains 8^12 (~70 billion) models, and `yolov5l`-like search space contains 8^8 models
+(~17 million) models.
+
+With ENOT framework you can reduce your model latency by sacrificing as small mean average precision as possible. To
+achieve this goal, we can help you to select the best architecture and the best resolution for your problem.
+
+To apply ENOT, you should do two additional steps.
+
+1. The first step is named `pretrain`. During this procedure you are training all the models from your search space on 
+   your own task. `Pretrain` usually takes ~5-7 times longer than single model training despite training millions of
+   models.
+2. The second step searches the best architecture (and, additionally, can search the best resolution) to fit your data.
+
+To estimate gains from ENOT framework usage, you should fairly compare your baseline model and ENOT-searched model.
+Baseline model is the best one you achieved by using YOLOv5 framework. You should train the model you found with ENOT
+with the same setup you trained your baseline model (to exclude unfair comparison). This implies that <font color="red">
+if you finetuned your baseline model from weights from another dataset (COCO, for example) - then you should first train
+the model found with ENOT on this dataset, and then finetune it on your target dataset.</font>
+
+`Pretrain` stage tips:
+* You should organize `pretrain` procedure to be as close to your baseline training as possible. This means that you
+  should use the same hyperparameters (augmentation, weight decay, image size, learning rate, etc). One exception is
+  that `pretrain` procedure usually benefir from training with more epochs, but this would require more computation 
+  resources, so we suggest keeping the same number of training epochs, too.
+* `Pretrain` is a resource-intensive procedure, so you should probably use multi-GPU training to make this procedure
+  faster.
+
+`Search` stage tips:
+* Copy training hyperparameters from your baseline setup. Set lr0=0.01, lrf=0.0, momentum=0.0, weight_decay=0.0,
+  warmup_momentum=0.0, warmup_bias_lr=0.0.
+* Use `--noautoanchor` option in search script by default. If your anchors have changed in `pretrain` procedure -
+  set new anchor values in search space `.yaml` config.
+* Use Adam or RAdam optimizer.
+* `--max-latency-value` should be larger than the minimal model latency in the search space. You can check the minimal
+  latency in the search space by calling the following code:
+
+  ```python
+  from enot.latency import min_latency, SearchSpaceLatencyContainer
+  latency_container = SearchSpaceLatencyContainer.load_from_file('path_to_latency_container.pkl')
+  print(min_latency(latency_container))
+  ```
 
 ## <div align="center">Running ENOT optimization on MS COCO</div>
 
-1. Go to `scripts` directory;
-2. Launch `pretrain.sh` script to pre-train search space (different networks from the search space will
-   learn how to work with each other);
-3. Select your latency kind (CPU, GPU, FLOPs) and generate latency container file with
-   `measure_latency.ipynb` notebook;
-4. Launch search.sh to search an optimal architecture for your task (you should specify `max-latency-value` needed for
-   your project);
-5. Instead of searching architecture alone, you can search the optimal resolution too. Run `resolution-search.sh`
-   instead of `search.sh`;
-6. Get the last reported architecture (which is stored in list with integers), copy it and paste in
-   `train_scratch.sh` script;
-7. Launch `train_scratch.sh` script to train found architecture from scratch.
+This section describes how you can reproduce our MS COCO search results.
 
-You can skip some steps. For example, we already pretrained search space based on `yolov5l`. You should contact ENOT
-team if you want to get it. Also, we already prepared some latency containers which you can find in `latency` folder.
+1. Setting up your baseline
+   * To start with ENOT, you need to train your baseline model. Baseline model should show your current performance (
+     i.e. mean average precision at certain threshold, Precision, Recall, ...). You should also measure its execution
+     time (latency), or use latency proxy such as million multiply-add operations (as used in
+     [MobileNetv2](https://arxiv.org/abs/1801.04381) article).
+   * Note that we conducted all of our experiments with <font color="red">**ReLU**</font> activation instead of SiLU
+     activation. If your plan to proceed with another activation - change it in `models/common.py`. If you plan to use
+     transfer learning from COCO dataset (by using pre-trained checkpoints) - then we cannot provide you `pretrain`
+     checkpoints with activation different from ReLU.
+   * To train baseline model on COCO dataset - simply go to `scripts/enot_coco/` and run `train_baseline.sh` script.
+2. Pretrain procedure
+   * Go to `scripts/enot_coco/` directory.
+   * Launch `pretrain_search_space.sh` script to start `pretrain` procedure.
+3. Search procedure
+   * Select your latency kind (CPU, GPU, MMACs) and generate latency container file with `measure_latency.ipynb`
+     notebook. You can also use our pre-computed latency container files in the `latency/` folder.
+   * Go to `scripts/enot_coco/` directory.
+   * Launch `search.sh` to search an optimal architecture for your task (you should specify `--max-latency-value` needed
+     for your project).
+   * Instead of searching architecture alone, you can search the optimal resolution too. Run `resolution-search.sh`
+     instead of `search.sh`;
+4. Training the model found with ENOT
+   * Go to `scripts/enot_coco/` directory.
+   * Get the last reported architecture from the search run (which is stored in list with integers), copy it and paste in
+    `train_enot_model_scratch.sh` script.
+   * Launch `train_enot_model_scratch.sh` script to train found architecture from scratch.
+
+You can skip some steps. For example, we already pretrained search space based on `yolov5l` and `yolov5s` (with ReLU
+activation). You should contact ENOT team if you want to use them.
+
+## <div align="center">Transfer learning from COCO with ENOT</div>
+
+This section describes how you can search YOLOv5-like models in COCO transfer learning setting.
+
+1. Setting up your baseline
+   * Go to `scripts/enot_pascal_voc/` directory.
+   * Finetune baseline model on COCO dataset by running `finetune_baseline_from_scratch.sh` script. Here we are
+     finetuning `yolov5s` model (which was pretrained on MS COCO dataset) on Pascal VOC dataset.
+2. Pretrain procedure
+   * Go to `scripts/enot_pascal_voc/` directory.
+   * Launch `finetune_search_space.sh` script to start `pretrain` procedure. Here we are finetuning search space based on
+     `yolov5s` model on Pascal VOC dataset. Our search space checkpoint is already pretrained on MS COCO dataset.
+3. Search procedure
+   * Select your latency kind (CPU, GPU, MMACs) and generate latency container file with `measure_latency.ipynb`
+     notebook. You can also use our pre-computed latency container files in the `latency/` folder.
+   * Go to `scripts/enot_pascal_voc/` directory.
+   * Launch `search.sh` to search an optimal architecture for your task (you should specify `--max-latency-value` needed
+     for your project).
+   * Instead of searching architecture alone, you can search the optimal resolution too. Run `resolution-search.sh`
+     instead of `search.sh`;
+4. Training the model found with ENOT on MS COCO
+   * Go to `scripts/enot_pascal_voc/` directory.
+   * Get the last reported architecture from the search run (which is stored in list with integers), copy it and paste in
+    `train_enot_model_scratch_coco.sh` script.
+   * Launch `train_enot_model_scratch_coco.sh` script to train found architecture from scratch on MS COCO.
+5. Training the model found with ENOT on your target dataset
+   * Go to `scripts/enot_pascal_voc/` directory.
+   * Set `--architecture-indices` as in `train_enot_model_scratch_coco.sh` script.
+   * Launch `finetune_enot_model.sh` script to finetune COCO-pretrained found model on your data (Pascal VOC in this
+     example).
+
+You can skip some steps. For example, we already pretrained search space based on `yolov5l` and `yolov5s` (with ReLU
+activation). You should contact ENOT team if you want to use them.
 
 ## <div align="center">Quick Start Examples</div>
 
 <details open>
 <summary>Install</summary>
 
-[**Python>=3.6.0**](https://www.python.org/) is required with all
+[**Python>=3.7.0**](https://www.python.org/) is required with all
 [requirements.txt](https://github.com/ultralytics/yolov5/blob/master/requirements.txt) installed including
-[**PyTorch>=1.7**](https://pytorch.org/get-started/locally/):
+[**PyTorch>=1.8**](https://pytorch.org/get-started/locally/):
 <!-- $ sudo apt update && apt install -y libgl1-mesa-glx libsm6 libxext6 libxrender-dev -->
 
 ```bash
@@ -93,32 +166,6 @@ $ pip install -r requirements.txt
 ```
 
 </details>
-
-<details open>
-<summary>Inference</summary>
-
-Inference with YOLOv5 and [PyTorch Hub](https://github.com/ultralytics/yolov5/issues/36). Models automatically download
-from the [latest YOLOv5 release](https://github.com/ultralytics/yolov5/releases).
-
-```python
-import torch
-
-# Model
-model = torch.hub.load('ultralytics/yolov5', 'yolov5s')  # or yolov5m, yolov5l, yolov5x, custom
-
-# Images
-img = 'https://ultralytics.com/images/zidane.jpg'  # or file, Path, PIL, OpenCV, numpy, list
-
-# Inference
-results = model(img)
-
-# Results
-results.print()  # or .show(), .save(), .crop(), .pandas(), etc.
-```
-
-</details>
-
-
 
 <details>
 <summary>Inference with detect.py</summary>
@@ -153,8 +200,6 @@ $ python train.py --data coco.yaml --cfg yolov5s.yaml --weights '' --batch-size 
                                          yolov5x                                16
 ```
 
-<img width="800" src="https://user-images.githubusercontent.com/26833433/90222759-949d8800-ddc1-11ea-9fa1-1c97eed2b963.png">
-
 </details>  
 
 <details open>
@@ -177,130 +222,8 @@ $ python train.py --data coco.yaml --cfg yolov5s.yaml --weights '' --batch-size 
 
 </details>
 
-## <div align="center">Environments and Integrations</div>
-
-Get started in seconds with our verified environments and integrations,
-including [Weights & Biases](https://wandb.ai/site?utm_campaign=repo_yolo_readme) for automatic YOLOv5 experiment
-logging. Click each icon below for details.
-
-<div align="center">
-    <a href="https://colab.research.google.com/github/ultralytics/yolov5/blob/master/tutorial.ipynb">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-colab-small.png" width="15%"/>
-    </a>
-    <a href="https://www.kaggle.com/ultralytics/yolov5">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-kaggle-small.png" width="15%"/>
-    </a>
-    <a href="https://hub.docker.com/r/ultralytics/yolov5">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-docker-small.png" width="15%"/>
-    </a>
-    <a href="https://github.com/ultralytics/yolov5/wiki/AWS-Quickstart">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-aws-small.png" width="15%"/>
-    </a>
-    <a href="https://github.com/ultralytics/yolov5/wiki/GCP-Quickstart">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-gcp-small.png" width="15%"/>
-    </a>
-    <a href="https://wandb.ai/site?utm_campaign=repo_yolo_readme">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-wb-small.png" width="15%"/>
-    </a>
-</div>  
-
-## <div align="center">Compete and Win</div>
-
-We are super excited about our first-ever Ultralytics YOLOv5 🚀 EXPORT Competition with **$10,000** in cash prizes!
-
-<p align="center">
-  <a href="https://github.com/ultralytics/yolov5/discussions/3213">
-  <img width="850" src="https://github.com/ultralytics/yolov5/releases/download/v1.0/banner-export-competition.png"></a>
-</p>
-
-## <div align="center">Why YOLOv5</div>
-
-<p align="center"><img width="800" src="https://user-images.githubusercontent.com/26833433/114313216-f0a5e100-9af5-11eb-8445-c682b60da2e3.png"></p>
-<details>
-  <summary>YOLOv5-P5 640 Figure (click to expand)</summary>
-
-<p align="center"><img width="800" src="https://user-images.githubusercontent.com/26833433/114313219-f1d70e00-9af5-11eb-9973-52b1f98d321a.png"></p>
-</details>
-<details>
-  <summary>Figure Notes (click to expand)</summary>
-
-* GPU Speed measures end-to-end time per image averaged over 5000 COCO val2017 images using a V100 GPU with batch size
-  32, and includes image preprocessing, PyTorch FP16 inference, postprocessing and NMS.
-* EfficientDet data from [google/automl](https://github.com/google/automl) at batch size 8.
-* **Reproduce** by
-  `python val.py --task study --data coco.yaml --iou 0.7 --weights yolov5s6.pt yolov5m6.pt yolov5l6.pt yolov5x6.pt`
-
-</details>
-
-### Pretrained Checkpoints
-
-[assets]: https://github.com/ultralytics/yolov5/releases
-
-|Model |size<br><sup>(pixels) |mAP<sup>val<br>0.5:0.95 |mAP<sup>test<br>0.5:0.95 |mAP<sup>val<br>0.5 |Speed<br><sup>V100 (ms) | |params<br><sup>(M) |FLOPs<br><sup>640 (B)
-|---                    |---  |---      |---      |---      |---     |---|---   |---
-|[YOLOv5s][assets]      |640  |36.7     |36.7     |55.4     |**2.0** |   |7.3   |17.0
-|[YOLOv5m][assets]      |640  |44.5     |44.5     |63.1     |2.7     |   |21.4  |51.3
-|[YOLOv5l][assets]      |640  |48.2     |48.2     |66.9     |3.8     |   |47.0  |115.4
-|[YOLOv5x][assets]      |640  |**50.4** |**50.4** |**68.8** |6.1     |   |87.7  |218.8
-|                       |     |         |         |         |        |   |      |
-|[YOLOv5s6][assets]     |1280 |43.3     |43.3     |61.9     |**4.3** |   |12.7  |17.4
-|[YOLOv5m6][assets]     |1280 |50.5     |50.5     |68.7     |8.4     |   |35.9  |52.4
-|[YOLOv5l6][assets]     |1280 |53.4     |53.4     |71.1     |12.3    |   |77.2  |117.7
-|[YOLOv5x6][assets]     |1280 |**54.4** |**54.4** |**72.0** |22.4    |   |141.8 |222.9
-|                       |     |         |         |         |        |   |      |
-|[YOLOv5x6][assets] TTA |1280 |**55.0** |**55.0** |**72.0** |70.8    |   |-     |-
-
-<details>
-  <summary>Table Notes (click to expand)</summary>
-
-* AP<sup>test</sup> denotes COCO [test-dev2017](http://cocodataset.org/#upload) server results, all other AP results
-  denote val2017 accuracy.
-* AP values are for single-model single-scale unless otherwise noted. **Reproduce mAP**
-  by `python val.py --data coco.yaml --img 640 --conf 0.001 --iou 0.65`
-* Speed<sub>GPU</sub> averaged over 5000 COCO val2017 images using a
-  GCP [n1-standard-16](https://cloud.google.com/compute/docs/machine-types#n1_standard_machine_types) V100 instance, and
-  includes FP16 inference, postprocessing and NMS. **Reproduce speed**
-  by `python val.py --data coco.yaml --img 640 --conf 0.25 --iou 0.45 --half`
-* All checkpoints are trained to 300 epochs with default settings and hyperparameters (no autoaugmentation).
-* Test Time Augmentation ([TTA](https://github.com/ultralytics/yolov5/issues/303)) includes reflection and scale
-  augmentation. **Reproduce TTA** by `python val.py --data coco.yaml --img 1536 --iou 0.7 --augment`
-
-</details>
-
-## <div align="center">Contribute</div>
-
-We love your input! We want to make contributing to YOLOv5 as easy and transparent as possible. Please see
-our [Contributing Guide](CONTRIBUTING.md) to get started.
-
 ## <div align="center">Contact</div>
 
 For issues running YOLOv5 please visit [GitHub Issues](https://github.com/ultralytics/yolov5/issues). For business or
-professional support requests please visit [https://ultralytics.com/contact](https://ultralytics.com/contact).
-
-<br>
-
-<div align="center">
-    <a href="https://github.com/ultralytics">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-github.png" width="3%"/>
-    </a>
-    <img width="3%" />
-    <a href="https://www.linkedin.com/company/ultralytics">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-linkedin.png" width="3%"/>
-    </a>
-    <img width="3%" />
-    <a href="https://twitter.com/ultralytics">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-twitter.png" width="3%"/>
-    </a>
-    <img width="3%" />
-    <a href="https://youtube.com/ultralytics">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-youtube.png" width="3%"/>
-    </a>
-    <img width="3%" />
-    <a href="https://www.facebook.com/ultralytics">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-facebook.png" width="3%"/>
-    </a>
-    <img width="3%" />
-    <a href="https://www.instagram.com/ultralytics/">
-        <img src="https://github.com/ultralytics/yolov5/releases/download/v1.0/logo-social-instagram.png" width="3%"/>
-    </a>
-</div>
+professional support requests please visit [https://ultralytics.com/contact](https://ultralytics.com/contact). For
+issues related to ENOT framework contact [ENOT team](https://enot.ai/#rec321431603).

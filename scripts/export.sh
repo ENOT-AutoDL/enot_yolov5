@@ -10,4 +10,4 @@ python export.py \
   --architecture-indices '[0, 1, 2, 3, 4, 5, 6, 7]' \
   --opset 11
 
-popd
+popd || exit
