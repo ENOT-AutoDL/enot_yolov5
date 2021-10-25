@@ -31,4 +31,4 @@ pandas
 thop  # FLOPs computation
 
 # ENOT framework ------------------------------
-# enot-autodl>=2.5.0
+enot-autodl>=2.6.0

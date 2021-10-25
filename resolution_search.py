@@ -3,7 +3,7 @@
 Train a YOLOv5 model on a custom dataset
 
 Usage:
-    $ python path/to/train.py --data coco128.yaml --weights yolov5s.pt --img 640
+    $ python path/to/resolution_search.py --data coco128.yaml --weights yolov5s.pt --img 640
 """
 
 import argparse
@@ -14,44 +14,51 @@ import time
 from pathlib import Path
 from typing import Dict
 from typing import Tuple
-from typing import Union
 
 import enot
+import enot.logging
 import numpy as np
 import torch
 import torch.distributed as dist
-import torch.nn as nn
 import yaml
 from enot.experimental.resolution_search import ResolutionSearcherWithFixedLatencyIterator
 from enot.experimental.resolution_search.resolution_strategy import ResolutionStrategy
 from enot.latency import SearchSpaceLatencyContainer
 from enot.latency import current_latency
-from enot.models import SearchSpaceModel
-from enot.models import SearchVariantsContainer
+from enot.latency import max_latency
 from enot.optimize import build_enot_optimizer
-from enot.utils.batch_norm import BatchNormTuneDataLoaderWrapper
 from enot.utils.batch_norm import tune_bn_stats
 from torch.cuda import amp
+from torch.optim import Adam
 from torch.optim import lr_scheduler
-from torch_optimizer import RAdam
 from tqdm import tqdm
 
 FILE = Path(__file__).absolute()
 sys.path.append(FILE.parents[0].as_posix())  # add yolov5/ to path
 
 import val  # for end-of-epoch mAP
-from models.yolo import Model
-from utils.datasets import create_dataloader
-from utils.general import labels_to_class_weights, increment_path, init_seeds, \
-    get_latest_run, check_dataset, check_file, check_git_status, check_img_size, \
-    check_requirements, set_logging, one_cycle, colorstr, methods
-from utils.downloads import attempt_download
-from utils.loss import ComputeLoss
-from utils.torch_utils import select_device, intersect_dicts, torch_distributed_zero_first
-from utils.loggers.wandb.wandb_utils import check_wandb_resume
-from utils.metrics import fitness
-from utils.loggers import Loggers
+from train import create_and_prepare_model
+from utils.bn_dataloader_wrapper import BatchNormTuneDataLoaderWrapper
 from utils.callbacks import Callbacks
+from utils.datasets import create_dataloader
+from utils.general import check_dataset
+from utils.general import check_file
+from utils.general import check_img_size
+from utils.general import check_requirements
+from utils.general import colorstr
+from utils.general import get_latest_run
+from utils.general import increment_path
+from utils.general import init_seeds
+from utils.general import labels_to_class_weights
+from utils.general import methods
+from utils.general import one_cycle
+from utils.general import set_logging
+from utils.loggers import Loggers
+from utils.loggers.wandb.wandb_utils import check_wandb_resume
+from utils.loss import ComputeLoss
+from utils.metrics import fitness
+from utils.torch_utils import select_device
+from utils.torch_utils import torch_distributed_zero_first
 
 LOGGER = logging.getLogger(__name__)
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
@@ -67,6 +74,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
         opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze
 
+    # This function prepares data from the dataloader to pass input images to the model during batch norm tuning.
     def preprocess_data(x: Tuple[torch.Tensor]) -> Tuple[Tuple[torch.Tensor], Dict]:
         return (x[0].to(device).float() / 255.0, ), {}
 
@@ -105,35 +113,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
     # Model
     pretrained = weights.endswith('.pt')
-    if pretrained:
-        with torch_distributed_zero_first(RANK):
-            weights = attempt_download(weights)  # download if not found locally
-        ckpt = torch.load(weights, map_location=device)  # load checkpoint
-
-        # We select EMA model for search procedure to compare models closer to production deployment.
-        load_ema_from_checkpoint = ckpt['phase_name'] == 'pretrain' and phase_name == 'search' and 'ema' in ckpt
-        ckpt_model = ckpt['model']
-        if load_ema_from_checkpoint:
-            LOGGER.info('Using EMA checkpoint for search')
-            ckpt_model = ckpt['ema']
-        ckpt_config = ckpt_model.original_model.yaml if isinstance(ckpt_model, SearchSpaceModel) else ckpt_model.yaml
-        model = Model(cfg or ckpt_config, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
-        exclude = ['anchor'] if (cfg or hyp.get('anchors')) and not resume else []  # exclude keys
-        csd = ckpt_model.float().state_dict()  # checkpoint state_dict as FP32
-    else:
-        model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
-
-    model_to_optimize: Union[nn.Module, SearchSpaceModel] = model
-    if any(isinstance(layer, SearchVariantsContainer) for layer in model.modules()):
-        model_to_optimize = search_space = SearchSpaceModel(model).to(device)
-    else:
-        raise ValueError(f'Phase "{phase_name}" requires model yaml file to contain search blocks')
-
-    # load weights only after SearchSpaceModel is applied to model class
-    if pretrained:
-        csd = intersect_dicts(csd, model_to_optimize.state_dict(), exclude=exclude)  # intersect
-        model_to_optimize.load_state_dict(csd, strict=False)  # load
-        LOGGER.info(f'Transferred {len(csd)}/{len(model_to_optimize.state_dict())} items from {weights}')  # report
+    model_to_optimize, model, search_space, ckpt = create_and_prepare_model(
+        weights, device, phase_name, cfg, opt, nc, hyp, resume, True,
+    )
 
     # Freeze
     freeze = [f'model.{x}.' for x in range(freeze)]  # layers to freeze
@@ -145,7 +127,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
     # Optimizer
     params = list(search_space.architecture_parameters())
-    optimizer = RAdam(params, lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))  # adjust beta1 to momentum
+    optimizer = Adam(params, lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))  # adjust beta1 to momentum
     LOGGER.info(f"{colorstr('optimizer:')} {type(optimizer).__name__} with {len(params)} search blocks")
     del params
 
@@ -181,9 +163,17 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     )[0]
     bn_tune_loader = BatchNormTuneDataLoaderWrapper(bn_tune_loader)
 
+    latency_folder = opt.latency_file
+    if latency_folder == '':
+        raise ValueError('Resolution search requires specifying latency file')
+
+    latency_container = SearchSpaceLatencyContainer.load_from_file(Path(latency_folder) / f'r640.pkl')
+    latency_scale = max_latency(latency_container)
+    opt.max_latency_value /= latency_scale
+
     additional_kwargs = {
         'bn_tune_dataloader': bn_tune_loader,
-        'bn_tune_batches': 2,
+        'bn_tune_batches': 5,
         'bn_validation_tune_batches': 0,
         'sample_to_model_inputs': preprocess_data,
     }
@@ -261,11 +251,17 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
             callbacks.on_pretrain_routine_end()
 
-        latency_folder = opt.latency_file
-        if latency_folder == '':
-            raise ValueError('Resolution search requires specifying latency file')
-
         latency_container = SearchSpaceLatencyContainer.load_from_file(Path(latency_folder) / f'r{resolution}.pkl')
+
+        latency_type = latency_container.latency_type
+        constant_latency = latency_container.constant_latency / latency_scale
+        operations_latencies = (np.array(latency_container.operations_latencies) / latency_scale).tolist()
+        latency_container = SearchSpaceLatencyContainer(
+            latency_type,
+            constant_latency,
+            operations_latencies,
+        )
+
         search_space.apply_latency_container(latency_container)
 
         # Model parameters
@@ -358,13 +354,16 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                 logger.info(f'It\'s latency: {current_latency(search_space)}')
                 logger.info(f'Architecture probabilities:\n{np.array(search_space.architecture_probabilities)}')
 
+                np.save(str(save_dir / f'p_{epoch + 1}.bin'), np.array(search_space.architecture_probabilities))
+                np.save(str(save_dir / f'a_{epoch + 1}.bin'), np.array(arch_to_test, dtype=np.int64))
+
                 test_model = search_space.get_network_by_indexes(arch_to_test).cuda()  # Extract single arch.
                 tune_bn_stats(  # Separate batch norm tuning. This gives better network performance estimation.
                     test_model,
                     bn_tune_loader,
                     reset_bns=True,
                     set_momentums_none=True,
-                    n_steps=250,  # You can reduce this value for faster execution.
+                    n_steps=50,  # You can reduce this value for faster execution.
                     sample_to_model_inputs=preprocess_data,
                 )
 

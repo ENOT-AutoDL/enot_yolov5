@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import json
 import logging
 import math
 import os
@@ -15,7 +16,9 @@ import sys
 import time
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 from typing import Dict
+from typing import List
 from typing import Optional
 from typing import Tuple
 from typing import Union
@@ -27,42 +30,224 @@ import torch.nn as nn
 import yaml
 from enot.latency import SearchSpaceLatencyContainer
 from enot.latency import current_latency
+from enot.latency import max_latency
 from enot.models import SearchSpaceModel
 from enot.models import SearchVariantsContainer
 from enot.optimize import build_enot_optimizer
 from enot.utils.batch_norm import tune_bn_stats
 from torch.cuda import amp
 from torch.nn.parallel import DistributedDataParallel as DDP
-from torch.optim import Adam, SGD, lr_scheduler
+from torch.optim import Adam
+from torch.optim import SGD
+from torch.optim import lr_scheduler
 from tqdm import tqdm
-
-from utils.bn_dataloader_wrapper import BatchNormTuneDataLoaderWrapper
-from utils.checkpoint import enable_checkpoint
 
 FILE = Path(__file__).absolute()
 sys.path.append(FILE.parents[0].as_posix())  # add yolov5/ to path
 
+# Expanded imports.
 import val  # for end-of-epoch mAP
-from models.experimental import attempt_load
 from models.yolo import Model
 from utils.autoanchor import check_anchors
-from utils.datasets import create_dataloader
-from utils.general import labels_to_class_weights, increment_path, labels_to_image_weights, init_seeds, \
-    strip_optimizer, get_latest_run, check_dataset, check_file, check_git_status, check_img_size, \
-    check_requirements, print_mutation, set_logging, one_cycle, colorstr, methods
-from utils.downloads import attempt_download
-from utils.loss import ComputeLoss
-from utils.plots import plot_labels, plot_evolve
-from utils.torch_utils import ModelEMA, select_device, intersect_dicts, torch_distributed_zero_first, de_parallel
-from utils.loggers.wandb.wandb_utils import check_wandb_resume
-from utils.metrics import fitness
-from utils.loggers import Loggers
+from utils.bn_dataloader_wrapper import BatchNormTuneDataLoaderWrapper
 from utils.callbacks import Callbacks
+from utils.checkpoint import enable_checkpoint
+from utils.datasets import create_dataloader
+from utils.downloads import attempt_download
+from utils.general import check_dataset
+from utils.general import check_file
+from utils.general import check_img_size
+from utils.general import check_requirements
+from utils.general import colorstr
+from utils.general import get_latest_run
+from utils.general import increment_path
+from utils.general import init_seeds
+from utils.general import labels_to_class_weights
+from utils.general import labels_to_image_weights
+from utils.general import methods
+from utils.general import one_cycle
+from utils.general import print_mutation
+from utils.general import set_logging
+from utils.general import strip_optimizer
+from utils.loggers import Loggers
+from utils.loggers.wandb.wandb_utils import check_wandb_resume
+from utils.loss import ComputeLoss
+from utils.metrics import fitness
+from utils.plots import plot_evolve
+from utils.plots import plot_labels
+from utils.torch_utils import ModelEMA
+from utils.torch_utils import de_parallel
+from utils.torch_utils import intersect_dicts
+from utils.torch_utils import select_device
+from utils.torch_utils import torch_distributed_zero_first
 
 LOGGER = logging.getLogger(__name__)
 LOCAL_RANK = int(os.getenv('LOCAL_RANK', -1))  # https://pytorch.org/docs/stable/elastic/run.html
 RANK = int(os.getenv('RANK', -1))
 WORLD_SIZE = int(os.getenv('WORLD_SIZE', 1))
+
+
+def set_checkpoint(
+        model_to_optimize: nn.Module,
+        checkpoint_model: nn.Module,
+        checkpoint_file: str,
+        exclude: List[str],
+) -> None:
+    dict_to_load = intersect_dicts(
+        checkpoint_model.float().state_dict(),  # Checkpoint state_dict as FP32.
+        model_to_optimize.state_dict(),
+        exclude=exclude,
+    )  # Intersect checkpoints.
+    model_to_optimize.load_state_dict(dict_to_load, strict=False)  # load
+    LOGGER.info(
+        f'Transferred {len(dict_to_load)}/{len(model_to_optimize.state_dict())} '
+        f'items from {checkpoint_file}'
+    )  # Report intersection statistics.
+    if len(dict_to_load) == 0:
+        raise RuntimeError('Unable to transfer anything from the checkpoint')
+
+
+def create_and_prepare_model(
+        weights: str,
+        device,
+        phase_name: str,
+        cfg,
+        opt,
+        nc: int,
+        hyp: Dict[str, Any],
+        resume: bool,
+        is_enot_phase: bool,
+) -> Tuple[nn.Module, nn.Module, Optional[SearchSpaceModel], Dict[str, Any]]:
+
+    pretrained: bool = weights.endswith('.pt')
+
+    checkpoint: Optional[Dict[str, Any]] = None
+    checkpoint_config = cfg
+    checkpoint_model: Optional[nn.Module] = None
+    checkpoint_with_ss: bool = False
+    checkpoint_with_model_from_ss: bool = False
+    checkpoint_exclude: List[str] = []
+
+    if pretrained:
+
+        with torch_distributed_zero_first(RANK):
+            weights = attempt_download(weights)  # Download if not found locally.
+
+        checkpoint = torch.load(weights, map_location=device)  # Load checkpoint.
+        if 'phase_name' not in checkpoint:  # When using checkpoints from ultralytics.
+            checkpoint['phase_name'] = 'train'
+
+        if checkpoint['phase_name'] == 'search':
+            raise RuntimeError('You should not use search phase checkpoints')
+
+        if 'ema' in checkpoint and checkpoint['ema'] is not None and not resume:
+            raise RuntimeError(
+                'To prevent hard-to-find bugs, we allow using only finalized checkpoints '
+                'for fine-tuning from pretrained weights\n'
+                'Finalized checkpoints can be obtained by calling "strip_optimizer" function '
+                '(BE CAREFUL, IT OVERWRITES YOUR CHECKPOINT FILE BY DEFAULT). This function '
+                'is automatically applied to your checkpoints at the end of training).'
+            )
+
+        checkpoint_model = checkpoint['model']
+        checkpoint_with_ss = isinstance(checkpoint_model, SearchSpaceModel)
+        checkpoint_with_model_from_ss = any(
+            isinstance(layer, SearchVariantsContainer)
+            for layer in checkpoint_model.modules()
+        ) and not checkpoint_with_ss
+        checkpoint_config = checkpoint_model.original_model.yaml if checkpoint_with_ss else checkpoint_model.yaml
+        checkpoint_exclude = ['anchor'] if (cfg or hyp.get('anchors')) and not resume else []  # exclude keys
+
+    model_config = cfg or checkpoint_config
+    model = Model(model_config, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
+
+    model_to_optimize: Union[nn.Module, SearchSpaceModel] = model
+    search_space: Optional[SearchSpaceModel] = None
+    if any(isinstance(layer, SearchVariantsContainer) for layer in model.modules()):
+        model_to_optimize = search_space = SearchSpaceModel(model).to(device)
+
+    # Verify that search space is provided for ENOT phases.
+    if is_enot_phase and search_space is None:
+        raise ValueError(
+            f'"{model_config}" model yaml file does not contain search blocks, '
+            f'but this is required for phase "{phase_name}"'
+        )
+
+    # Check whether we should extract single architecture from the search space or not.
+    has_architecture_indices = opt.architecture_indices != '[]'
+    extract_single_architecture = False
+    if is_enot_phase or search_space is None:
+        if has_architecture_indices:
+            raise ValueError(
+                f'--architecture-indices commandline argument should only be provided '
+                f'when training single model from search space.\n'
+                f'--architecture-indices should not be set for phase "{phase_name}" '
+                f'and "{model_config}" model yaml file.'
+            )
+    else:
+        if has_architecture_indices:
+            extract_single_architecture = True
+        else:
+            raise ValueError(
+                f'Training or tuning models from a search space requires setting '
+                f'--architecture-indices commandline argument.\n'
+                f'No architecture indices were provided for phase "{phase_name}" '
+                f'and "{model_config}" model yaml file.'
+            )
+
+    # Check that we can restore checkpoint weights in the first place.
+    if pretrained:
+        if is_enot_phase and not checkpoint_with_ss:
+            # We can only apply weights from SearchSpaceModel in ENOT phases (pretrain and search).
+            raise ValueError(
+                f'ENOT phase "{phase_name}" requires checkpoint with SearchSpaceModel, '
+                f'but checkpoint "{weights}" has a model with type {type(checkpoint_model)}.'
+            )
+        if not is_enot_phase:
+            if (search_space is not None) and (not checkpoint_with_ss) and (not checkpoint_with_model_from_ss):
+                # New model has search variant containers, but checkpoint contains
+                # regular model without search variants.
+                raise ValueError(
+                    f'"{model_config}" model yaml file contains search variants, '
+                    f'but the model from checkpoint "{weights}" is neither a search '
+                    f'space instance nor an extracted model from a search space'
+                )
+            if (search_space is None) and (checkpoint_with_ss or checkpoint_with_model_from_ss):
+                # New model has no search variant containers, but checkpoint contains
+                # either a search space or a model from the search space.
+                raise ValueError(
+                    f'"{model_config}" model yaml file contains no search variants, '
+                    f'but the model from checkpoint "{weights}" is either a search '
+                    f'space instance or an extracted model from a search space'
+                )
+
+    # For almost all cases, we can load model from our checkpoint to newly created model.
+    # The only exception is loading weights from a single model from the search space.
+    if pretrained and not checkpoint_with_model_from_ss:
+        set_checkpoint(model_to_optimize, checkpoint_model, weights, checkpoint_exclude)
+
+    if extract_single_architecture:
+        extracted_model = search_space.get_network_by_indexes(json.loads(opt.architecture_indices))
+        model = model_to_optimize = extracted_model
+        search_space = None
+
+    # Loading weights from a single model from the search space.
+    if checkpoint_with_model_from_ss:
+        set_checkpoint(model_to_optimize, checkpoint_model, weights, checkpoint_exclude)
+
+    # Optionally prune search space to remove rare or unused operations.
+    # from utils.prune_search_space_variants import prune_search_space_variants
+    # prune_indices = [[ 0,  2,  3,  7],
+    #    [ 2,  4,  7,  9],
+    #    [ 1,  7,  8, 10],
+    #    [ 0,  1,  6,  9],
+    #    [ 6,  7,  8,  9],
+    #    [ 5,  6,  9, 10],
+    #    [ 0,  3,  6,  8],
+    #    [ 3,  5,  6,  9]]
+    # prune_search_space_variants(search_space, prune_indices=prune_indices)
+
+    return model_to_optimize, model, search_space, checkpoint
 
 
 def train(hyp,  # path/to/hyp.yaml or hyp dictionary
@@ -127,44 +312,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
     # Model
     pretrained = weights.endswith('.pt')
-    if pretrained:
-        with torch_distributed_zero_first(RANK):
-            weights = attempt_download(weights)  # download if not found locally
-        ckpt = torch.load(weights, map_location=device)  # load checkpoint
-
-        # We select EMA model for search procedure to compare models closer to production deployment.
-        load_ema_from_checkpoint = ckpt['phase_name'] == 'pretrain' and phase_name == 'search' and 'ema' in ckpt
-        ckpt_model = ckpt['model']
-        if load_ema_from_checkpoint:
-            LOGGER.info('Using EMA checkpoint for search')
-            ckpt_model = ckpt['ema']
-        ckpt_config = ckpt_model.original_model.yaml if isinstance(ckpt_model, SearchSpaceModel) else ckpt_model.yaml
-        model = Model(cfg or ckpt_config, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
-        exclude = ['anchor'] if (cfg or hyp.get('anchors')) and not resume else []  # exclude keys
-        csd = ckpt_model.float().state_dict()  # checkpoint state_dict as FP32
-    else:
-        model = Model(cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
-
-    model_to_optimize: Union[nn.Module, SearchSpaceModel] = model
-    search_space: Optional[SearchSpaceModel] = None
-    if any(isinstance(layer, SearchVariantsContainer) for layer in model.modules()):
-        model_to_optimize = search_space = SearchSpaceModel(model).to(device)
-
-    if is_enot_phase and search_space is None:
-        raise ValueError(f'Phase "{phase_name}" requires model yaml file to contain search blocks')
-
-    if not is_enot_phase and search_space is not None:
-        if opt.architecture_indices == '[]':
-            raise ValueError(f'Phase "{phase_name}" requires setting --architecture-indices commandline argument')
-        extracted_model = search_space.get_network_by_indexes(eval(opt.architecture_indices))
-        model = model_to_optimize = extracted_model
-        search_space = None
-
-    # load weights only after SearchSpaceModel is applied to model class
-    if pretrained:
-        csd = intersect_dicts(csd, model_to_optimize.state_dict(), exclude=exclude)  # intersect
-        model_to_optimize.load_state_dict(csd, strict=False)  # load
-        LOGGER.info(f'Transferred {len(csd)}/{len(model_to_optimize.state_dict())} items from {weights}')  # report
+    model_to_optimize, model, search_space, ckpt = create_and_prepare_model(
+        weights, device, phase_name, cfg, opt, nc, hyp, resume, is_enot_phase,
+    )
 
     if not is_search and opt.grad_checkpoint:
         LOGGER.info('Enabling gradient checkpoint for better GPU memory utilization')
@@ -257,7 +407,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                 )
                 epochs += ckpt['epoch']  # finetune additional epochs
 
-            del ckpt, csd
+            del ckpt
 
         else:
 
@@ -318,12 +468,36 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     if cuda and RANK != -1 and not is_enot_phase:
         model_to_optimize = DDP(model_to_optimize, device_ids=[LOCAL_RANK], output_device=LOCAL_RANK)
 
+    # Try to load latency container for latency-aware search.
+    # You can find latency containers in yolov5/latency folder.
+    if is_search:
+        latency_file = opt.latency_file
+        if latency_file == '' and opt.max_latency_value != 0.0:
+            raise ValueError('Latency file is not provided when max-latency-value is positive')
+        if latency_file != '':
+            latency_container = SearchSpaceLatencyContainer.load_from_file(latency_file)
+
+            latency_scale = max_latency(latency_container)
+
+            latency_type = latency_container.latency_type
+            constant_latency = latency_container.constant_latency / latency_scale
+            operations_latencies = (np.array(latency_container.operations_latencies) / latency_scale).tolist()
+            latency_container = SearchSpaceLatencyContainer(
+                latency_type,
+                constant_latency,
+                operations_latencies,
+            )
+
+            search_space.apply_latency_container(latency_container)
+
+            opt.max_latency_value /= latency_scale
+
     additional_kwargs = {}
     if is_search:
 
         # Use pretrain data loader for batch norm tuning (with all augmentations as during pre-train).
         bn_tune_loader = create_dataloader(
-            data_dict['pretrain'], imgsz, batch_size // WORLD_SIZE * 2, gs, single_cls,
+            data_dict['pretrain'], 640, batch_size // WORLD_SIZE * 2, gs, single_cls,
             hyp=hyp, augment=True, cache=opt.cache, rect=opt.rect, rank=RANK,
             workers=workers, image_weights=opt.image_weights, quad=opt.quad,
             pad=0,
@@ -332,7 +506,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         # Define additional keyword arguments for ENOT optimizer which are necessary for yolov5 search procedure.
         additional_kwargs = {
             'bn_tune_dataloader': bn_tune_loader,
-            'bn_tune_batches': 2,
+            'bn_tune_batches': 5,
             'bn_validation_tune_batches': 0,
             'sample_to_model_inputs': preprocess_data,
         }
@@ -347,16 +521,6 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     if is_pretrain:
         sample_input = torch.zeros(1, 3, 256, 256).cuda()
         search_space.initialize_output_distribution_optimization(sample_input)
-
-    # Try to load latency container for latency-aware search.
-    # You can find latency containers in yolov5/latency folder.
-    if is_search:
-        latency_file = opt.latency_file
-        if latency_file == '' and opt.max_latency_value != 0.0:
-            raise ValueError('Latency file is not provided when max-latency-value is positive')
-        if latency_file != '':
-            latency_container = SearchSpaceLatencyContainer.load_from_file(latency_file)
-            search_space.apply_latency_container(latency_container)
 
     # Model parameters
     hyp['box'] *= 3. / nl  # scale to layers
@@ -504,6 +668,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                         f'{np.array(search_space.architecture_probabilities)}'
                     )
 
+                    np.save(str(save_dir / f'p_{epoch + 1}.bin'), np.array(search_space.architecture_probabilities))
+                    np.save(str(save_dir / f'a_{epoch + 1}.bin'), np.array(arch_to_test, dtype=np.int64))
+
                 test_search_space = ema.ema if ema is not None else search_space  # Use EMA model if exists.
                 test_model = test_search_space.get_network_by_indexes(arch_to_test).cuda()  # Extract single arch.
                 tune_bn_stats(  # Separate batch norm tuning. This gives better network performance estimation.
@@ -511,7 +678,7 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
                     bn_tune_loader,
                     reset_bns=True,
                     set_momentums_none=True,
-                    n_steps=250,  # You can reduce this value for faster execution.
+                    n_steps=50,  # You can reduce this value for faster execution.
                     sample_to_model_inputs=preprocess_data,
                 )
 
@@ -564,18 +731,19 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
     if RANK in [-1, 0]:
         LOGGER.info(f'\n{epoch - start_epoch + 1} epochs completed in {(time.time() - t0) / 3600:.3f} hours.')
         if not evolve:
-            if is_coco:  # COCO dataset
-                for m in [last, best] if best.exists() else [last]:  # speed, mAP tests
-                    results, _, _ = val.run(data_dict,
-                                            batch_size=batch_size // WORLD_SIZE * 2,
-                                            imgsz=imgsz,
-                                            model=attempt_load(m, device).half(),
-                                            iou_thres=0.7,  # NMS IoU threshold for best pycocotools results
-                                            single_cls=single_cls,
-                                            dataloader=val_loader,
-                                            save_dir=save_dir,
-                                            save_json=True,
-                                            plots=False)
+            # Not necessary to call it here.
+            # if is_coco:  # COCO dataset
+            #     for m in [last, best] if best.exists() else [last]:  # speed, mAP tests
+            #         results, _, _ = val.run(data_dict,
+            #                                 batch_size=batch_size // WORLD_SIZE * 2,
+            #                                 imgsz=imgsz,
+            #                                 model=attempt_load(m, device).half(),
+            #                                 iou_thres=0.7,  # NMS IoU threshold for best pycocotools results
+            #                                 single_cls=single_cls,
+            #                                 dataloader=val_loader,
+            #                                 save_dir=save_dir,
+            #                                 save_json=True,
+            #                                 plots=False)
             # Strip optimizers
             for f in last, best:
                 if f.exists():

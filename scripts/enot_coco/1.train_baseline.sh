@@ -9,8 +9,9 @@ CUDA_VISIBLE_DEVICES=0 python train.py \
   --hyp 'data/hyps/hyp.scratch.yaml' \
   --data 'enot_coco.yaml' \
   --img 640 \
-  --batch 16 \
+  --batch 64 \
   --epochs 300 \
+  --noautoanchor \
   --weights '' \
   # --resume  # uncomment this if you want to resume your last train experiment
 
