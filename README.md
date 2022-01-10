@@ -26,7 +26,7 @@ YOLOv5 🚀 is a family of object detection architectures and models pretrained 
 
 See the [YOLOv5 Docs](https://docs.ultralytics.com) for full documentation on training, testing and deployment.
 
-See the [ENOT Docs](https://readthedocs.expasoft.com/) for full ENOT framework documentation.
+See the [ENOT Docs](https://enot-autodl.rtd.enot.ai/) for full ENOT framework documentation.
 
 ## <div align="center">Getting started with the combination of ENOT and YOLOv5</div>
 
